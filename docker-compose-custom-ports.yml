@@ -1,0 +1,75 @@
+# Docker Compose с кастомными портами для VPS с занятыми портами
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: top24_password
+      POSTGRES_DB: top24
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+    networks:
+      - top24-network
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    networks:
+      - top24-network
+
+  backend:
+    build: ./backend
+    command: sh -c "node -v && sh scripts/start.sh"
+    environment:
+      DATABASE_URL: postgresql://postgres:top24_password@postgres:5432/top24?schema=public
+      PORT: 3001
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      BOT_TOKEN: ${BOT_TOKEN}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    restart: unless-stopped
+    networks:
+      - top24-network
+
+  bot:
+    build: ./bot
+    command: node src/index.js
+    environment:
+      BOT_TOKEN: ${BOT_TOKEN}
+      BACKEND_URL: http://backend:3001/api
+    depends_on:
+      - backend
+    restart: unless-stopped
+    networks:
+      - top24-network
+
+  web:
+    build: ./web
+    command: npm run start
+    environment:
+      NEXT_PUBLIC_BACKEND_URL: http://localhost:3001/api
+    ports:
+      - "8080:3000"  # Веб-панель на порту 8080
+    depends_on:
+      - backend
+    restart: unless-stopped
+    networks:
+      - top24-network
+
+volumes:
+  pgdata:
+
+networks:
+  top24-network:
+    driver: bridge

@@ -1,0 +1,12 @@
+temp
+.env
+.idea
+.vscode
+node_modules
+.github
+
+# Next.js
+.webpack/
+.next/
+out/
+

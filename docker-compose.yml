@@ -1,0 +1,76 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: top24
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+
+  backend:
+    build: ./backend
+    command: sh -c "node -v && sh scripts/start.sh"
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/top24?schema=public
+      PORT: 3001
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      BOT_TOKEN: ${BOT_TOKEN}
+    ports:
+      - "3001:3001"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    volumes:
+      - ./backend:/app
+      - /app/node_modules
+    restart: unless-stopped
+
+  bot:
+    build: ./bot
+    command: node src/index.js
+    environment:
+      BOT_TOKEN: ${BOT_TOKEN}
+      BACKEND_URL: http://backend:3001/api
+    depends_on:
+      - backend
+    volumes:
+      - ./bot:/app
+      - /app/node_modules
+    restart: unless-stopped
+
+  web:
+    build: ./web
+    command: npm run dev
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+    volumes:
+      - ./web:/app
+      - /app/node_modules
+    environment:
+      NEXT_PUBLIC_BACKEND_URL: http://backend:3001/api
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+
+
